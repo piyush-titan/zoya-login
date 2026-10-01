@@ -351,6 +351,9 @@
   }
   el.body.addEventListener('scroll', updateFootShadow, { passive: true });
   window.addEventListener('resize', () => { if (!el.dlg.hidden) updateFootShadow(); });
+  // Re-check once web fonts or content change the body's height, so the divider never goes stale
+  if ('ResizeObserver' in window) { const ro = new ResizeObserver(() => { if (!el.dlg.hidden) updateFootShadow(); }); ro.observe(el.stage); ro.observe(el.body); }
+  if (document.fonts) document.fonts.ready.then(() => { if (!el.dlg.hidden) updateFootShadow(); });
 
   function renderTrail() {
     const items = [];

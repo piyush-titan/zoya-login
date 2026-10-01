@@ -606,3 +606,29 @@ body.dlg-open .demo details:not([open]) { opacity: .85; }
 
 /* Consent block and acknowledgement share one text size */
 .consent__title, .check:not(.check--remember), .pill, .channels__q, .consent .msg, .legal { font-size: 12.5px; }
+
+/* Desktop: fixed-width form column (text never reflows with screen size, zoom or scaling);
+   the dialog hugs its content so the image matches the form height */
+@media (min-width: 900px) {
+  .dlg { min-height: 0; }
+  .dlg__media { flex: 1 1 auto; min-width: 0; }
+  .dlg__panel { flex: 0 0 540px; }
+  .dlg__body { padding: 8px 48px 0 52px; }
+  .dlg__foot { padding: 24px 48px 32px 52px; }
+  .dlg__body > *, .dlg__foot > * { max-width: none; }
+  .dlg__foot > .legal { white-space: nowrap; }
+}
+.dlg__foot { padding-top: 20px; }
+
+/* Consent: clear separation between the two statements */
+.consent .channels + .check { margin-top: 10px; }
+
+/* Remembered device: compact saved-preferences row */
+.prefs { border-radius: var(--r-sm); }
+.prefs--inline { margin-top: 16px; }
+.prefs--inline .prefs__head { padding: 8px 6px 8px 12px; gap: 10px; }
+.prefs--inline .prefs__icon { width: 28px; height: 28px; }
+.prefs--inline .prefs__icon svg { width: 15px; height: 15px; }
+.prefs--inline .prefs__title { font-size: 14px; }
+.prefs--inline .prefs__sum { font-size: 12.5px; margin-top: 0; }
+.prefs--inline .prefs__toggle { min-height: 36px; font-size: 14px; }
