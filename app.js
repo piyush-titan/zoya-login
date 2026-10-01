@@ -1067,7 +1067,6 @@
     }
     return {
       body: `
-        <span class="done-mark" aria-hidden="true">${ICON.tick}</span>
         <h2 class="prompt" id="stepTitle">${title}</h2>
         <p class="sub">${sub}</p>
         ${extra}`,

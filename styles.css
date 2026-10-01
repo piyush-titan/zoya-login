@@ -698,3 +698,6 @@ body.dlg-open .demo details:not([open]) { opacity: .85; }
 
 /* CTA area: no divider line, as in Mia */
 .dlg__foot, .dlg__foot.is-raised { border-top-color: transparent; }
+
+/* Success: note matches the line above it */
+.consent__note { font-size: 16.5px; margin-top: 0; }
