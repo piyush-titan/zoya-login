@@ -401,9 +401,7 @@
   /* ---------- Step: phone ---------- */
   STEPS.phone = () => ({
     body: `
-      <p class="eyebrow eyebrow--offer">Welcome to Zoya</p>
       <h2 class="prompt" id="stepTitle">Sign In or Sign Up</h2>
-      <p class="sub">Enter your mobile number. We’ll text you an OTP.</p>
       <div id="formAlert"></div>
       <form id="stepForm" novalidate>
         <div class="phone-card">

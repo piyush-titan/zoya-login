@@ -600,3 +600,9 @@ body.dlg-open .demo details:not([open]) { opacity: .85; }
   .eyebrow.eyebrow--offer { display: block; width: auto; margin: 0 0 12px; padding: 0; background: none; border-radius: 0; text-align: left; }
   .dlg .prompt { font-size: 34px; }
 }
+
+/* Phone step: title sits directly above the number field */
+.dlg[data-step="phone"] .prompt { margin-bottom: 18px; }
+
+/* Consent block and acknowledgement share one text size */
+.consent__title, .check:not(.check--remember), .pill, .channels__q, .consent .msg, .legal { font-size: 12.5px; }
