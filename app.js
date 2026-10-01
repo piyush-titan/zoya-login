@@ -358,18 +358,16 @@
   function renderTrail() {
     const items = [];
     if (['swap', 'otp-email', 'otp-alt'].includes(S.step)) {
-      items.push({ label: 'Mobile', value: prettyPhone(S.country, S.number), verified: true, edit: 'phone' });
+      items.push({ value: prettyPhone(S.country, S.number), verified: true, edit: 'phone', aria: 'Change mobile number' });
     }
     if (['swap', 'otp-email', 'otp-alt'].includes(S.step)) {
-      const name = [S.details.title, S.details.first, S.details.last].filter(Boolean).join(' ');
-      items.push({ label: name, value: S.details.email, edit: 'details' });
+      items.push({ value: S.details.email, edit: 'details', aria: 'Change name and email' });
     }
     el.trail.innerHTML = items.map((it, i) => `
       <li class="chip">
         ${it.verified ? ICON.tick.replace('<svg', '<svg class="chip__tick"') : ''}
-        <span class="chip__label">${esc(it.label)}</span>
         <span class="chip__value">${esc(it.value)}</span>
-        <button type="button" class="chip__edit" data-edit="${it.edit}" aria-label="Change ${esc(it.label.toLowerCase() === 'mobile' ? 'mobile number' : 'name and email')}">${ICON.edit}</button>
+        <button type="button" class="chip__edit" data-edit="${it.edit}" aria-label="${it.aria}">${ICON.edit}</button>
       </li>`).join('');
     $$('[data-edit]', el.trail).forEach((b) => b.addEventListener('click', () => {
       if (b.dataset.edit === 'phone') { S = keepEntry(); go('phone', { focus: '#phoneInput' }); }
@@ -1014,22 +1012,20 @@
     const email = S.details.email; const masked = maskPhone(S.swap.ownerKey);
     return {
       body: `
-        <p class="eyebrow">${ICON.info} Email already in use</p>
-        <h2 class="prompt" id="stepTitle">This email is linked to another account</h2>
-        <p class="sub"><strong>${esc(email)}</strong> is already registered with another mobile number. How would you like to continue?</p>
+        <h2 class="prompt prompt--compact" id="stepTitle">This email is linked to another account</h2>
         <div id="formAlert"></div>
         <form id="stepForm" novalidate>
           <fieldset class="choices">
             <legend class="sr-only">Choose how to continue</legend>
             <label class="choice">
               <input type="radio" name="swap" value="mobile" ${S.swap.choice === 'mobile' ? 'checked' : ''}>
-              <span><span class="choice__title">Continue with ${esc(masked)}</span>
-              <span class="choice__desc">Sign in to the existing account with a code sent to that number.</span></span>
+              <span><span class="choice__title">Sign in with ${esc(masked)}</span>
+              <span class="choice__desc">We’ll text a code to that number.</span></span>
             </label>
             <label class="choice">
               <input type="radio" name="swap" value="email" ${S.swap.choice === 'email' ? 'checked' : ''}>
-              <span><span class="choice__title">Verify ${esc(email)}</span>
-              <span class="choice__desc">We’ll email you a code, then move this email to the account you’re creating.</span></span>
+              <span><span class="choice__title">Use this email for my new account</span>
+              <span class="choice__desc">We’ll email you a code to confirm.</span></span>
             </label>
           </fieldset>
           <p class="or-link">Or <button type="button" class="link-btn" id="diffEmail">use a different email</button></p>
