@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <title>Zoya · Sign In or Sign Up (prototype)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Production: load Adobe Garamond Pro from your Adobe Fonts kit, e.g. <link rel="stylesheet" href="https://use.typekit.net/KIT_ID.css"> -->
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=2">
+</head>
+<body>
+  <div id="storefront">
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="wordmark" href="#" aria-label="Zoya home">
+          <span class="wordmark__name">ZOYA</span>
+        </a>
+        <nav class="site-nav" aria-label="Categories">
+          <a href="#">Collections</a><a href="#">Necklaces</a><a href="#">Earrings</a><a href="#">Rings</a><a href="#">Bangles</a>
+        </nav>
+        <div class="site-actions" id="siteActions"></div>
+      </div>
+    </header>
+
+    <main class="store">
+      <section class="store-hero" aria-label="Storefront preview">
+        <p class="store-hero__eyebrow">Storefront preview</p>
+        <h1 class="store-hero__title">Exquisite diamond boutique</h1>
+        <p class="store-hero__text">This page stands in for the live site. Use <strong>Login</strong> in the header to try the new Sign In and Sign Up flow.</p>
+        <button class="btn btn--primary store-hero__cta" type="button" data-open-login>Sign In or Sign Up</button>
+      </section>
+      <ul class="store-grid" aria-hidden="true">
+        <li></li><li></li><li></li><li></li><li></li><li></li><li></li><li></li>
+      </ul>
+    </main>
+  </div>
+
+  <!-- Login / sign-up dialog -->
+  <div class="scrim" id="scrim" hidden></div>
+  <section class="dlg" id="dlg" role="dialog" aria-modal="true" aria-labelledby="stepTitle" hidden>
+    <!-- Left: campaign image. Replace the slot with: <img src="assets/login-hero.jpg" alt=""> (portrait) -->
+    <aside class="dlg__media" aria-hidden="true">
+      <div class="media__img">
+        <span class="media__slot">Campaign image<br>(portrait)</span>
+      </div>
+    </aside>
+    <div class="dlg__panel">
+    <!-- Mobile/tablet image slot (phone step only). Replace the span with: <img src="assets/login-banner-mobile.jpg" alt=""> (wide, ~3.4:1) -->
+    <div class="dlg__banner" aria-hidden="true">
+      <span class="media__slot">Campaign image (wide)</span>
+    </div>
+    <header class="dlg__head">
+      <button class="dlg__back" type="button" id="backBtn" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+        Back
+      </button>
+      <button class="icon-btn" type="button" id="closeBtn" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="dlg__body" id="dlgBody">
+      <ol class="trail" id="trail" aria-label="Your answers"></ol>
+      <div class="stage" id="stage"></div>
+    </div>
+    <footer class="dlg__foot" id="foot"></footer>
+    </div>
+    <p class="sr-only" aria-live="polite" id="live"></p>
+  </section>
+
+  <!-- Demo-only controls: not part of the production design -->
+  <aside class="demo" id="demo" aria-label="Prototype test scenarios">
+    <details>
+      <summary>Test scenarios</summary>
+      <div class="demo__body">
+        <p class="demo__note">OTP for every code: <strong>123456</strong></p>
+        <p class="demo__note">To see saved preferences collapsed on the first screen: sign in with “Remember me” ticked, log out, then open Login again.</p>
+        <ul class="demo__list">
+          <li><button type="button" data-demo-phone="9876543210">98765 43210</button> Returning, consented to all</li>
+          <li><button type="button" data-demo-phone="9876543211">98765 43211</button> Returning, partial consent</li>
+          <li><button type="button" data-demo-phone="9876543212">98765 43212</button> Returning, no consent</li>
+          <li><button type="button" data-demo-phone="9123456780">91234 56780</button> New user</li>
+          <li>New user + email <button type="button" data-demo-copy="piyushbiswal@titan.co.in">piyushbiswal@titan.co.in</button> triggers the email swap (owned by 98123 43469)</li>
+        </ul>
+        <label class="demo__toggle"><input type="checkbox" id="demoNetFail"> Simulate network failure</label>
+        <div class="demo__row">
+          <button type="button" id="demoExpire">Expire current OTP</button>
+          <button type="button" id="demoReset">Reset demo data</button>
+        </div>
+      </div>
+    </details>
+  </aside>
+
+  <script src="app.js?v=2"></script>
+</body>
+</html>
