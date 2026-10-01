@@ -696,9 +696,5 @@ body.dlg-open .demo details:not([open]) { opacity: .85; }
   .dlg[data-step="details"] .welcome__title { font-size: 22px; }
 }
 
-/* CTA area: no divider line (as in Mia). When the form scrolls, content fades out softly instead */
-.dlg__foot, .dlg__foot.is-raised { border-top-color: transparent; box-shadow: none; position: relative; }
-.dlg__foot.is-raised::before {
-  content: ""; position: absolute; left: 0; right: 0; top: -28px; height: 28px; pointer-events: none;
-  background: linear-gradient(to bottom, rgba(255,255,255,0), var(--white, #fff));
-}
+/* CTA area: no divider line, as in Mia */
+.dlg__foot, .dlg__foot.is-raised { border-top-color: transparent; }
