@@ -632,3 +632,27 @@ body.dlg-open .demo details:not([open]) { opacity: .85; }
 .prefs--inline .prefs__title { font-size: 14px; }
 .prefs--inline .prefs__sum { font-size: 12.5px; margin-top: 0; }
 .prefs--inline .prefs__toggle { min-height: 36px; font-size: 14px; }
+
+/* Desktop: one static dialog height for every step. Shorter steps sit centred in the panel
+   (no gap between content and CTA); taller steps scroll in the body while the CTA stays pinned. */
+@media (min-width: 900px) {
+  .dlg {
+    height: min(640px, calc(100vh - 48px));
+    height: min(640px, calc(100dvh - 48px));
+    min-height: 0; max-height: none;
+  }
+  .dlg__body { flex: 0 1 auto; min-height: 0; margin-top: auto; }
+  .dlg__foot { margin-bottom: auto; }
+}
+@media (min-width: 900px) {
+  .dlg__body { scrollbar-width: thin; }
+  /* Account creation: denser rhythm so the whole form fits the static height */
+  .dlg[data-step="details"] .welcome { margin-bottom: 10px; }
+  .dlg[data-step="details"] .field { margin-bottom: 12px; }
+  .dlg[data-step="details"] .field__label { margin-bottom: 4px; }
+  .dlg[data-step="details"] .input { min-height: 44px; }
+  .dlg[data-step="details"] .salute__opt span { min-height: 40px; }
+  .dlg[data-step="details"] .consent { margin-top: 4px; padding-top: 10px; }
+  .dlg[data-step="details"] .dlg__body { padding-top: 0; }
+  .dlg[data-step="details"] .dlg__foot { padding-top: 16px; padding-bottom: 24px; }
+}
