@@ -194,10 +194,12 @@
   const blankConsent = () => ({ marketing: false, channels: { email: false, whatsapp: false, call: false, sms: false }, personalisation: false });
   const cloneConsent = (c) => ({ marketing: !!c?.marketing, channels: { ...blankConsent().channels, ...(c?.channels || {}) }, personalisation: !!c?.personalisation });
   const anyChannel = (c) => Object.values(c.channels).some(Boolean);
-  const addOptIns = (saved, added) => {
-    const a = cloneConsent(saved); const b = cloneConsent(added);
-    Object.keys(a.channels).forEach((k) => { a.channels[k] = a.channels[k] || b.channels[k]; });
-    return { marketing: a.marketing || b.marketing, channels: a.channels, personalisation: a.personalisation || b.personalisation };
+  // Blank form: only boxes the customer touched change; untouched boxes keep the saved value.
+  const applyTouched = (saved, shown, touched) => {
+    const a = cloneConsent(saved); const b = cloneConsent(shown);
+    touched.forEach((k) => { if (k === 'personalisation') a.personalisation = b.personalisation; else a.channels[k] = b.channels[k]; });
+    a.marketing = anyChannel(a);
+    return a;
   };
   const normaliseConsent = (c, source) => {
     const n = cloneConsent(c);
@@ -256,6 +258,7 @@
     number: '',
     remember: true,
     consentTouched: false,
+    touchedKeys: [],
     consentMode: 'open',
     key: null,
     details: { title: '', first: '', last: '', email: '' },
@@ -276,7 +279,7 @@
     }
     return st;
   };
-  const keepEntry = () => { const { country, number, consent, consentTouched, consentMode, remember } = S; return { ...fresh(), country, number, consent, consentTouched, consentMode, remember }; };
+  const keepEntry = () => { const { country, number, consent, consentTouched, touchedKeys, consentMode, remember } = S; return { ...fresh(), country, number, consent, consentTouched, touchedKeys, consentMode, remember }; };
   // OTP limits are tracked per destination so going back cannot reset them.
   const otpLedger = new Map();
   let timerId = null;
@@ -562,6 +565,7 @@
     if (mode !== S.consentMode) {
       S.consent = mode === 'saved' ? cloneConsent(rememberedUser().user.consent) : blankConsent();
       S.consentTouched = false;
+      S.touchedKeys = [];
     }
     S.consentMode = mode;
     if (mode === 'open') return consentFieldset('ph', S.consent);
@@ -580,6 +584,13 @@
   }
   function bindPhoneConsent() {
     const wrap = $('#phConsentWrap');
+    const touch = (keys) => keys.forEach((k) => { if (!S.touchedKeys.includes(k)) S.touchedKeys.push(k); });
+    $('#ph-consent', wrap).addEventListener('change', (e) => {
+      const t = e.target;
+      if (t.id === 'ph-mkt') touch(CHANNELS.map((c) => c.key));
+      else if (t.dataset.ch) touch([t.dataset.ch]);
+      else if (t.id === 'ph-prs') touch(['personalisation']);
+    });
     bindConsent(wrap, 'ph', S.consent, () => {
       S.consentTouched = true;
       const sum = $('#phPrefsSum'); if (sum) sum.textContent = consentSummary(S.consent);
@@ -758,9 +769,9 @@
       if (user) {
         if (S.consentTouched) {
           // Prefilled from this device's saved record: the user saw and edited their real choices, so save as shown.
-          // Blank form (new device, incognito, Remember me off): an empty box is "not answered", never a withdrawal,
-          // so only newly ticked opt-ins are added to what is already on file.
-          const next = S.consentMode === 'saved' ? S.consent : addOptIns(user.consent, S.consent);
+          // Blank form (new device, incognito, Remember me off): untouched boxes mean "not answered" and keep the
+          // saved value; a touched box is a decision (ticked = yes, ticked then unticked = no).
+          const next = S.consentMode === 'saved' ? S.consent : applyTouched(user.consent, S.consent, S.touchedKeys);
           user = { ...user, consent: await api.saveConsent(S.key, normaliseConsent(next, 'login')) };
         }
         return signedIn(S.key, user, 'returning');
