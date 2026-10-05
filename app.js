@@ -14,7 +14,7 @@
     OTP_VALID_S: 300,
     MAX_ATTEMPTS: 5,
     MAX_RESENDS: 3,
-    LOCK_S: 60,           // Production value is a backend decision (e.g. 15 min).
+    LOCK_S: 24 * 60 * 60, // 24-hour block after too many incorrect codes.
     LATENCY_MS: 650,
   };
 
@@ -99,7 +99,7 @@
       try { return JSON.parse(localStorage.getItem(DB_KEY)) || seed(); } catch { return seed(); }
     },
     write(data) { localStorage.setItem(DB_KEY, JSON.stringify(data)); },
-    reset() { [DB_KEY, SESSION_KEY, 'zoya-login-demo-device'].forEach((k) => localStorage.removeItem(k)); },
+    reset() { [DB_KEY, SESSION_KEY, 'zoya-login-demo-device', 'zoya-login-demo-locks'].forEach((k) => localStorage.removeItem(k)); },
   };
 
   const demo = { netFail: false };
@@ -158,7 +158,21 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const fmtTime = (s) => (s >= 3600
+    ? `${Math.floor(s / 3600)}:${pad2(Math.floor(s / 60) % 60)}:${pad2(s % 60)}`
+    : `${Math.floor(s / 60)}:${pad2(s % 60)}`);
+
+  // Blocked numbers/emails survive reloads (the backend owns this in production).
+  const LOCKS_KEY = 'zoya-login-demo-locks';
+  const locks = {
+    all() { try { return JSON.parse(localStorage.getItem(LOCKS_KEY)) || {}; } catch { return {}; } },
+    get(dest) { const u = this.all()[dest] || 0; if (u && u <= Date.now()) { this.clear(dest); return 0; } return u; },
+    set(dest, until) { const a = this.all(); a[dest] = until; localStorage.setItem(LOCKS_KEY, JSON.stringify(a)); },
+    clear(dest) { const a = this.all(); delete a[dest]; localStorage.setItem(LOCKS_KEY, JSON.stringify(a)); },
+  };
+  const lockLeftS = (dest) => { const u = locks.get(dest); return u ? Math.ceil((u - Date.now()) / 1000) : 0; };
+  const lockAlert = (secs) => alertBox(`Too many incorrect attempts. For your security, try again in <span data-lock>${fmtTime(secs)}</span>.`);
   const keyOf = (country, number) => `${country.dial}-${number}`;
   const groupDigits = (digits, group) => {
     const out = []; let i = 0;
@@ -451,6 +465,24 @@
         d = d.replace(/^0+/, ''); // trunk prefix: no supported mobile range starts with 0
         return d.slice(0, c.len);
       };
+      const btnP = $('#primaryBtn'); const alertEl = $('#formAlert');
+      let shownLock = false;
+      const checkLock = () => {
+        const full = S.number.length >= S.country.min && S.country.pattern.test(S.number);
+        const secs = full ? lockLeftS(keyOf(S.country, S.number)) : 0;
+        if (secs > 0) {
+          const span = alertEl.querySelector('[data-lock]');
+          if (span) span.textContent = fmtTime(secs);
+          else { alertEl.innerHTML = lockAlert(secs); announce('Too many incorrect attempts. This number is temporarily blocked.'); }
+          shownLock = true; btnP.disabled = true;
+        } else if (shownLock) {
+          alertEl.innerHTML = ''; shownLock = false; btnP.disabled = false;
+        }
+        return secs > 0;
+      };
+      clearInterval(timerId);
+      checkLock();
+      timerId = setInterval(checkLock, 1000);
       const refreshConsent = () => {
         const mode = consentModeFor();
         if (mode !== S.consentMode) { $('#phConsentWrap').innerHTML = phoneConsent(); bindPhoneConsent(); }
@@ -471,6 +503,7 @@
           setFieldError(input, err, invalidPhoneText());
         }
         refreshConsent();
+        checkLock();
       });
       input.addEventListener('blur', () => {
         if (S.number && S.number.length < S.country.min) setFieldError(input, err, lengthText());
@@ -485,6 +518,7 @@
         refreshConsent();
         input.value = groupDigits(S.number, S.country.group);
         setFieldError(input, err, '');
+        checkLock();
         input.focus();
       });
 
@@ -497,6 +531,8 @@
         if (!S.country.pattern.test(S.number)) return setFieldError(input, err, invalidPhoneText()), input.focus();
         const ce = consentError(S.consent);
         if (ce) { const ce2 = $('#ph-chErr'); ce2.className = 'msg msg--error'; ce2.innerHTML = ICON.alert + esc(ce); $('#ph-ch-email').focus(); return; }
+        shownLock = false;
+        if (checkLock()) return;
         S.key = keyOf(S.country, S.number);
         await startOtp({ kind: 'phone', dest: S.key, label: prettyPhone(S.country, S.number) }, btn, 'otp');
       });
@@ -561,7 +597,9 @@
   /* ---------- OTP engine ---------- */
   function ledger(dest) {
     if (!otpLedger.has(dest)) otpLedger.set(dest, { attempts: 0, resends: 0, sentAt: 0, lockedUntil: 0 });
-    return otpLedger.get(dest);
+    const L = otpLedger.get(dest);
+    L.lockedUntil = locks.get(dest);
+    return L;
   }
 
   async function startOtp(ctx, btn, nextStep) {
@@ -596,7 +634,7 @@
         ${eyebrow ? `<p class="eyebrow">${eyebrow}</p>` : ''}
         <h2 class="prompt" id="stepTitle">${title}</h2>
         <p class="sub">${sub}</p>
-        <div id="formAlert">${locked ? alertBox(`Too many incorrect attempts. For your security, try again in <span data-lock>${fmtTime(Math.ceil((L.lockedUntil - Date.now()) / 1000))}</span>.`) : ''}</div>
+        <div id="formAlert">${locked ? lockAlert(Math.ceil((L.lockedUntil - Date.now()) / 1000)) : ''}</div>
         <form id="stepForm" novalidate>
           <label class="field__label" for="otpInput">One-time code</label>
           <div class="otp ${locked ? 'is-disabled' : ''}" id="otpBox">
@@ -644,7 +682,7 @@
         resendArea.innerHTML = '';
         return;
       }
-      if (L.lockedUntil && L.lockedUntil <= now) { L.lockedUntil = 0; L.attempts = 0; L.sentAt = 0; render(); return; }
+      if (L.lockedUntil && L.lockedUntil <= now) { locks.clear(S.otp.dest); L.lockedUntil = 0; L.attempts = 0; L.sentAt = 0; clearInterval(timerId); render(); return; }
       if (L.resends >= CONFIG.MAX_RESENDS) {
         resendArea.innerHTML = `<span>You’ve used all ${CONFIG.MAX_RESENDS} resends. Please try again later.</span>`;
         return;
@@ -658,6 +696,7 @@
       }
       if (!L.expired && now - L.sentAt > CONFIG.OTP_VALID_S * 1000) L.expired = true;
     };
+    clearInterval(timerId);
     tick();
     timerId = setInterval(tick, 1000);
 
@@ -692,7 +731,7 @@
           setBusy(btn, false);
           L.attempts += 1;
           const left = CONFIG.MAX_ATTEMPTS - L.attempts;
-          if (left <= 0) { L.lockedUntil = Date.now() + CONFIG.LOCK_S * 1000; render(); announce('Too many incorrect attempts.'); return; }
+          if (left <= 0) { L.lockedUntil = Date.now() + CONFIG.LOCK_S * 1000; locks.set(S.otp.dest, L.lockedUntil); clearInterval(timerId); render(); announce('Too many incorrect attempts.'); return; }
           input.value = ''; paint();
           return fail(`That code isn’t right. ${left} ${left === 1 ? 'attempt' : 'attempts'} left.`);
         }
