@@ -194,6 +194,11 @@
   const blankConsent = () => ({ marketing: false, channels: { email: false, whatsapp: false, call: false, sms: false }, personalisation: false });
   const cloneConsent = (c) => ({ marketing: !!c?.marketing, channels: { ...blankConsent().channels, ...(c?.channels || {}) }, personalisation: !!c?.personalisation });
   const anyChannel = (c) => Object.values(c.channels).some(Boolean);
+  const addOptIns = (saved, added) => {
+    const a = cloneConsent(saved); const b = cloneConsent(added);
+    Object.keys(a.channels).forEach((k) => { a.channels[k] = a.channels[k] || b.channels[k]; });
+    return { marketing: a.marketing || b.marketing, channels: a.channels, personalisation: a.personalisation || b.personalisation };
+  };
   const normaliseConsent = (c, source) => {
     const n = cloneConsent(c);
     n.marketing = n.marketing && anyChannel(n);
@@ -298,6 +303,7 @@
 
   function closeDialog() {
     clearInterval(timerId);
+    if (location.hash.startsWith('#screen=')) history.replaceState(null, '', location.pathname + location.search);
     el.scrim.hidden = true;
     el.dlg.hidden = true;
     el.store.inert = false;
@@ -750,7 +756,13 @@
     if (kind === 'phone') {
       let user = await api.findUser(S.key);
       if (user) {
-        if (S.consentTouched) user = { ...user, consent: await api.saveConsent(S.key, normaliseConsent(S.consent, 'login')) };
+        if (S.consentTouched) {
+          // Prefilled from this device's saved record: the user saw and edited their real choices, so save as shown.
+          // Blank form (new device, incognito, Remember me off): an empty box is "not answered", never a withdrawal,
+          // so only newly ticked opt-ins are added to what is already on file.
+          const next = S.consentMode === 'saved' ? S.consent : addOptIns(user.consent, S.consent);
+          user = { ...user, consent: await api.saveConsent(S.key, normaliseConsent(next, 'login')) };
+        }
         return signedIn(S.key, user, 'returning');
       }
       return go('details', { focus: '#title0' });
@@ -1196,6 +1208,127 @@
     renderHeader();
   });
   window.addEventListener('offline', () => { if (!el.dlg.hidden) showFormAlert('You’re offline. Reconnect to continue.'); });
+
+  /* ---------- Screen switcher: jump straight to any pop-up state (developer handoff) ---------- */
+  const IN = COUNTRIES[0];
+  const PV = { returningAll: '91-9876543210', returningSome: '91-9876543211', returningNone: '91-9876543212', fresh: '91-9123456780', owner: '91-9812343469', blocked: '91-9876543213' };
+  const numOf = (key) => key.split('-')[1];
+  const seededUser = (key) => {
+    const data = db.read(); data.users[key] = seed().users[key]; db.write(data);
+    return data.users[key];
+  };
+  const newProfile = () => ({ ...fresh().details, title: 'Ms.', first: 'Aisha', last: 'Verma', email: 'aisha.verma@gmail.com' });
+  const swapProfile = () => ({ ...fresh().details, title: 'Mr.', first: 'Piyush', last: 'Biswal', email: 'piyushbiswal@titan.co.in' });
+  const asPhone = (key) => { S.country = IN; S.number = numOf(key); S.key = key; };
+  const otpFor = (kind, dest, label, ledgerState = {}) => {
+    S.otp = { kind, dest, label };
+    otpLedger.set(dest, { attempts: 0, resends: 0, sentAt: Date.now(), lockedUntil: 0, expired: false, ...ledgerState });
+  };
+  const otpError = (text) => {
+    $('#otpBox').classList.add('is-invalid'); $('#otpInput').setAttribute('aria-invalid', 'true');
+    $('#otpErr').innerHTML = ICON.alert + esc(text);
+  };
+  const signupFlow = () => { asPhone(PV.fresh); };
+  const swapFlow = () => { asPhone(PV.fresh); S.details = swapProfile(); S.swap = { ownerKey: PV.owner, choice: 'mobile' }; };
+
+  const SCREENS = [
+    { group: 'Sign in / Sign up', items: [
+      { id: 'phone', label: 'Mobile number: first visit', step: 'phone' },
+      { id: 'phone-invalid', label: 'Mobile number: invalid number', step: 'phone',
+        setup() { S.number = '5123456789'; S.phoneError = invalidPhoneText(); },
+        after() { $('#phoneInput').setAttribute('aria-invalid', 'true'); } },
+      { id: 'phone-remembered', label: 'Remembered device: saved preferences', step: 'phone',
+        setup() { seededUser(PV.returningAll); device.set(PV.returningAll); S = freshFromDevice(); } },
+      { id: 'phone-remembered-edit', label: 'Remembered device: editing preferences', step: 'phone',
+        setup() { seededUser(PV.returningSome); device.set(PV.returningSome); S = freshFromDevice(); },
+        after() { $('#phPrefsToggle')?.click(); } },
+      { id: 'phone-blocked', label: 'Blocked number (24-hour lock)', step: 'phone',
+        setup() { locks.set(PV.blocked, Date.now() + CONFIG.LOCK_S * 1000); S.number = numOf(PV.blocked); } },
+      { id: 'phone-network', label: 'Network error', step: 'phone',
+        setup() { S.number = numOf(PV.returningAll); }, after() { showFormAlert(NET_ERR); } },
+    ] },
+    { group: 'OTP', items: [
+      { id: 'otp', label: 'Code sent (resend countdown)', step: 'otp',
+        setup() { asPhone(PV.returningAll); otpFor('phone', PV.returningAll, prettyPhone(IN, numOf(PV.returningAll))); } },
+      { id: 'otp-wrong', label: 'Wrong code (attempts left)', step: 'otp',
+        setup() { asPhone(PV.returningAll); otpFor('phone', PV.returningAll, prettyPhone(IN, numOf(PV.returningAll)), { attempts: 2 }); },
+        after() { otpError(`That code isn’t right. ${CONFIG.MAX_ATTEMPTS - 2} attempts left.`); } },
+      { id: 'otp-incomplete', label: 'Incomplete code', step: 'otp',
+        setup() { asPhone(PV.returningAll); otpFor('phone', PV.returningAll, prettyPhone(IN, numOf(PV.returningAll))); },
+        after() { otpError(`Enter all ${CONFIG.OTP_LENGTH} digits of the code.`); } },
+      { id: 'otp-resend', label: 'Resend available', step: 'otp',
+        setup() { asPhone(PV.returningAll); otpFor('phone', PV.returningAll, prettyPhone(IN, numOf(PV.returningAll)), { sentAt: Date.now() - CONFIG.RESEND_AFTER_S * 1000 }); } },
+      { id: 'otp-resent', label: 'New code sent', step: 'otp',
+        setup() { asPhone(PV.returningAll); otpFor('phone', PV.returningAll, prettyPhone(IN, numOf(PV.returningAll)), { resends: 1 }); },
+        after() { showFormAlert(`A new code is on its way to ${S.otp.label}.`, 'info'); } },
+      { id: 'otp-expired', label: 'Code expired', step: 'otp',
+        setup() { asPhone(PV.returningAll); otpFor('phone', PV.returningAll, prettyPhone(IN, numOf(PV.returningAll)), { expired: true, sentAt: Date.now() - CONFIG.OTP_VALID_S * 1000 - 1 }); },
+        after() { otpError('This code has expired. Tap “Resend code” to get a new one.'); } },
+      { id: 'otp-max-resends', label: 'All resends used', step: 'otp',
+        setup() { asPhone(PV.returningAll); otpFor('phone', PV.returningAll, prettyPhone(IN, numOf(PV.returningAll)), { resends: CONFIG.MAX_RESENDS, sentAt: Date.now() - CONFIG.RESEND_AFTER_S * 1000 }); } },
+      { id: 'otp-blocked', label: 'Too many attempts (24-hour lock)', step: 'otp',
+        setup() { asPhone(PV.blocked); locks.set(PV.blocked, Date.now() + CONFIG.LOCK_S * 1000); otpFor('phone', PV.blocked, prettyPhone(IN, numOf(PV.blocked))); } },
+    ] },
+    { group: 'New account', items: [
+      { id: 'details', label: 'Create account', step: 'details', setup: signupFlow },
+      { id: 'details-errors', label: 'Create account: missing fields', step: 'details', setup: signupFlow,
+        after() { $('#stepForm').requestSubmit(); } },
+      { id: 'details-typo', label: 'Create account: email typo suggestion', step: 'details',
+        setup() { signupFlow(); S.details = { ...newProfile(), email: 'aisha.verma@gmial.com' }; },
+        after() { $('#email').dispatchEvent(new Event('blur')); } },
+      { id: 'swap', label: 'Email linked to another account', step: 'swap', setup: swapFlow },
+      { id: 'otp-alt', label: 'Sign in with the other number (OTP)', step: 'otp-alt',
+        setup() { swapFlow(); otpFor('alt', PV.owner, maskPhone(PV.owner)); } },
+      { id: 'otp-email', label: 'Verify email to move it (OTP)', step: 'otp-email',
+        setup() { swapFlow(); S.swap.choice = 'email'; otpFor('email', `email:${S.details.email}`, maskEmail(S.details.email)); } },
+    ] },
+    { group: 'Signed in', items: [
+      { id: 'success-new', label: 'Account created', step: 'success',
+        setup() { S.result = { key: PV.fresh, how: 'new', user: newProfile() }; } },
+      { id: 'success-swapped', label: 'Account created, email moved', step: 'success',
+        setup() { S.result = { key: PV.fresh, how: 'swapped', user: swapProfile() }; } },
+      { id: 'success-all', label: 'Welcome back: all preferences on', step: 'success',
+        setup() { S.result = { key: PV.returningAll, how: 'returning', user: seededUser(PV.returningAll) }; } },
+      { id: 'success-some', label: 'Welcome back: some preferences on', step: 'success',
+        setup() { S.result = { key: PV.returningSome, how: 'returning', user: seededUser(PV.returningSome) }; } },
+      { id: 'success-none', label: 'Welcome back: no preferences yet', step: 'success',
+        setup() { S.result = { key: PV.returningNone, how: 'returning', user: seededUser(PV.returningNone) }; } },
+      { id: 'prefs', label: 'Communication preferences (account menu)', step: 'prefs',
+        setup() { seededUser(PV.returningSome); session.set(PV.returningSome); renderHeader(); } },
+    ] },
+  ];
+  const SCREEN_LIST = SCREENS.flatMap((g) => g.items);
+
+  function showScreen(id) {
+    const sc = SCREEN_LIST.find((s) => s.id === id);
+    if (!sc) return;
+    clearInterval(timerId);
+    if (el.dlg.hidden) {
+      lastFocus = document.activeElement;
+      el.scrim.hidden = false; el.dlg.hidden = false; el.store.inert = true;
+      document.body.classList.add('is-locked', 'dlg-open');
+    }
+    S = fresh();
+    sc.setup?.();
+    S.step = sc.step;
+    render();
+    sc.after?.();
+    updateFootShadow();
+    history.replaceState(null, '', `#screen=${id}`);
+  }
+
+  const screenSel = $('#screenSel');
+  screenSel.innerHTML = `<option value="">Choose a screen…</option>${SCREENS.map((g) => `<optgroup label="${esc(g.group)}">${g.items.map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('')}</optgroup>`).join('')}`;
+  screenSel.addEventListener('change', () => { if (screenSel.value) showScreen(screenSel.value); });
+  const stepScreen = (d) => {
+    const i = SCREEN_LIST.findIndex((s) => s.id === screenSel.value);
+    const next = SCREEN_LIST[(i + d + SCREEN_LIST.length) % SCREEN_LIST.length];
+    screenSel.value = next.id; showScreen(next.id);
+  };
+  $('#screenPrev').addEventListener('click', () => stepScreen(-1));
+  $('#screenNext').addEventListener('click', () => stepScreen(1));
+  const fromHash = decodeURIComponent(location.hash).match(/^#screen=([\w-]+)$/);
+  if (fromHash && SCREEN_LIST.some((s) => s.id === fromHash[1])) { screenSel.value = fromHash[1]; requestAnimationFrame(() => showScreen(fromHash[1])); }
 
   renderHeader();
 })();

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Production: load Adobe Garamond Pro from your Adobe Fonts kit, e.g. <link rel="stylesheet" href="https://use.typekit.net/KIT_ID.css"> -->
   <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
   <div id="storefront">
@@ -72,6 +72,12 @@
 
   <!-- Demo-only controls: not part of the production design -->
   <aside class="demo" id="demo" aria-label="Prototype test scenarios">
+    <div class="demo__screens">
+      <label class="demo__screens-label" for="screenSel">Screen</label>
+      <button type="button" class="demo__nav" id="screenPrev" aria-label="Previous screen">‹</button>
+      <select id="screenSel"></select>
+      <button type="button" class="demo__nav" id="screenNext" aria-label="Next screen">›</button>
+    </div>
     <details>
       <summary>Test scenarios</summary>
       <div class="demo__body">
@@ -93,6 +99,6 @@
     </details>
   </aside>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
