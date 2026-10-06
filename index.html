@@ -82,11 +82,9 @@
       <summary>Test scenarios</summary>
       <div class="demo__body">
         <p class="demo__note">OTP for every code: <strong>123456</strong></p>
-        <p class="demo__note">To see saved preferences collapsed on the first screen: sign in with “Remember me” ticked, log out, then open Login again.</p>
+        <p class="demo__note">Remember me: sign in with it ticked, log out, then open Login again. Only the mobile number is pre-filled; consent boxes always start unticked.</p>
         <ul class="demo__list">
-          <li><button type="button" data-demo-phone="9876543210">98765 43210</button> Returning, consented to all</li>
-          <li><button type="button" data-demo-phone="9876543211">98765 43211</button> Returning, partial consent</li>
-          <li><button type="button" data-demo-phone="9876543212">98765 43212</button> Returning, no consent</li>
+          <li><button type="button" data-demo-phone="9876543210">98765 43210</button> Existing customer</li>
           <li><button type="button" data-demo-phone="9123456780">91234 56780</button> New user</li>
           <li>New user + email <button type="button" data-demo-copy="piyushbiswal@titan.co.in">piyushbiswal@titan.co.in</button> triggers the email swap (owned by 98123 43469)</li>
         </ul>
@@ -99,6 +97,6 @@
     </details>
   </aside>
 
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>

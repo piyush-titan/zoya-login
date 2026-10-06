@@ -77,20 +77,12 @@
   const DB_KEY = 'zoya-login-demo-db';
   const SESSION_KEY = 'zoya-login-demo-session';
 
-  const consentOf = (marketing, ch, personalisation) => ({
-    marketing,
-    channels: { email: !!ch.email, whatsapp: !!ch.whatsapp, call: !!ch.call, sms: !!ch.sms },
-    personalisation,
-    updatedAt: '2025-01-10T10:00:00.000Z',
-    source: 'seed',
-  });
-
   const seed = () => ({
     users: {
-      '91-9876543210': { title: 'Ms.', first: 'Riya', last: 'Sharma', email: 'riya.sharma@gmail.com', consent: consentOf(true, { email: 1, whatsapp: 1, call: 1, sms: 1 }, true) },
-      '91-9876543211': { title: 'Mr.', first: 'Arjun', last: 'Mehta', email: 'arjun.mehta@gmail.com', consent: consentOf(true, { email: 1, whatsapp: 1 }, false) },
-      '91-9876543212': { title: 'Mrs.', first: 'Neha', last: 'Kapoor', email: 'neha.kapoor@gmail.com', consent: consentOf(false, {}, false) },
-      '91-9812343469': { title: 'Mr.', first: 'Piyush', last: 'Biswal', email: 'piyushbiswal@titan.co.in', consent: consentOf(true, { email: 1 }, true) },
+      '91-9876543210': { title: 'Ms.', first: 'Riya', last: 'Sharma', email: 'riya.sharma@gmail.com' },
+      '91-9876543211': { title: 'Mr.', first: 'Arjun', last: 'Mehta', email: 'arjun.mehta@gmail.com' },
+      '91-9876543212': { title: 'Mrs.', first: 'Neha', last: 'Kapoor', email: 'neha.kapoor@gmail.com' },
+      '91-9812343469': { title: 'Mr.', first: 'Piyush', last: 'Biswal', email: 'piyushbiswal@titan.co.in' },
     },
   });
 
@@ -129,12 +121,12 @@
       db.write(data);
       return data.users[key];
     },
-    async saveConsent(key, consent) {
+    // Send-only: the selections are logged; nothing is read back into the UI. Opt-out happens via an external link.
+    async sendConsent(key, consent) {
       await net();
       const data = db.read();
-      data.users[key].consent = consent;
+      (data.users[key].consentLog = data.users[key].consentLog || []).push(consent);
       db.write(data);
-      return consent;
     },
   };
 
@@ -194,38 +186,13 @@
   const blankConsent = () => ({ marketing: false, channels: { email: false, whatsapp: false, call: false, sms: false }, personalisation: false });
   const cloneConsent = (c) => ({ marketing: !!c?.marketing, channels: { ...blankConsent().channels, ...(c?.channels || {}) }, personalisation: !!c?.personalisation });
   const anyChannel = (c) => Object.values(c.channels).some(Boolean);
-  // Blank form: only boxes the customer touched change; untouched boxes keep the saved value.
-  const applyTouched = (saved, shown, touched) => {
-    const a = cloneConsent(saved); const b = cloneConsent(shown);
-    touched.forEach((k) => { if (k === 'personalisation') a.personalisation = b.personalisation; else a.channels[k] = b.channels[k]; });
-    a.marketing = anyChannel(a);
-    return a;
-  };
+  const anySelected = (c) => anyChannel(c) || c.personalisation;
   const normaliseConsent = (c, source) => {
     const n = cloneConsent(c);
     n.marketing = n.marketing && anyChannel(n);
     if (!n.marketing) Object.keys(n.channels).forEach((k) => { n.channels[k] = false; });
     return { ...n, updatedAt: new Date().toISOString(), source };
   };
-  const consentLevel = (c) => {
-    if (!c) return 'none';
-    const n = cloneConsent(c);
-    const mk = n.marketing && anyChannel(n);
-    const allCh = Object.values(n.channels).every(Boolean);
-    if (mk && allCh && n.personalisation) return 'all';
-    if (!mk && !n.personalisation) return 'none';
-    return 'partial';
-  };
-  const consentSummary = (c) => {
-    const n = cloneConsent(c);
-    const chosen = CHANNELS.filter((ch) => n.channels[ch.key]).map((ch) => ch.label);
-    const mk = n.marketing && chosen.length
-      ? (chosen.length === 4 ? 'Offers on all channels' : `Offers by ${listJoin(chosen)}`)
-      : 'No marketing messages';
-    const p = n.personalisation ? 'personalised picks on' : 'personalised picks off';
-    return `${mk} · ${p}`;
-  };
-  const listJoin = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
 
   const EMAIL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,}$/;
   const DOMAIN_TYPOS = {
@@ -247,19 +214,11 @@
   /* =========================================================
      State
      ========================================================= */
-  const rememberedUser = () => {
-    const k = device.get();
-    const u = k && db.read().users[k];
-    return u ? { key: k, user: u } : null;
-  };
   const fresh = () => ({
     step: 'phone',
     country: COUNTRIES[0], // India is always the default.
     number: '',
     remember: true,
-    consentTouched: false,
-    touchedKeys: [],
-    consentMode: 'open',
     key: null,
     details: { title: '', first: '', last: '', email: '' },
     consent: blankConsent(),
@@ -271,15 +230,15 @@
   let S = fresh();
   const freshFromDevice = () => {
     const st = fresh();
-    const r = rememberedUser();
-    if (r) {
-      const [dial, num] = r.key.split('-');
+    const k = device.get(); // Remember me stores only the mobile number for this browser.
+    if (k) {
+      const [dial, num] = k.split('-');
       st.country = COUNTRIES.find((c) => c.dial === dial) || COUNTRIES[0];
       st.number = num;
     }
     return st;
   };
-  const keepEntry = () => { const { country, number, consent, consentTouched, touchedKeys, consentMode, remember } = S; return { ...fresh(), country, number, consent, consentTouched, touchedKeys, consentMode, remember }; };
+  const keepEntry = () => { const { country, number, consent, remember } = S; return { ...fresh(), country, number, consent, remember }; };
   // OTP limits are tracked per destination so going back cannot reset them.
   const otpLedger = new Map();
   let timerId = null;
@@ -452,12 +411,12 @@
         </div>
         </div>
         <label class="check check--remember"><input type="checkbox" id="rememberMe" ${S.remember !== false ? 'checked' : ''}><span>Remember me</span></label>
-        <div id="phConsentWrap">${phoneConsent()}</div>
+        <div id="phConsentWrap">${consentFieldset('ph', S.consent)}</div>
       </form>`,
     foot: `<button class="btn btn--primary" type="submit" form="stepForm" id="primaryBtn">Get OTP</button>${legal()}`,
     focus: '#phoneInput',
     bind() {
-      bindPhoneConsent();
+      bindConsent($('#phConsentWrap'), 'ph', S.consent);
       $('#rememberMe').addEventListener('change', (e) => { S.remember = e.target.checked; });
       const input = $('#phoneInput'); const sel = $('#countrySel'); const err = $('#phoneErr'); const hint = $('#phoneHint');
       let hintTimer;
@@ -474,29 +433,6 @@
         d = d.replace(/^0+/, ''); // trunk prefix: no supported mobile range starts with 0
         return d.slice(0, c.len);
       };
-      const btnP = $('#primaryBtn'); const alertEl = $('#formAlert');
-      let shownLock = false;
-      const checkLock = () => {
-        const full = S.number.length >= S.country.min && S.country.pattern.test(S.number);
-        const secs = full ? lockLeftS(keyOf(S.country, S.number)) : 0;
-        if (secs > 0) {
-          const span = alertEl.querySelector('[data-lock]');
-          if (span) span.textContent = fmtTime(secs);
-          else { alertEl.innerHTML = lockAlert(secs); announce('Too many incorrect attempts. This number is temporarily blocked.'); }
-          shownLock = true; btnP.disabled = true;
-        } else if (shownLock) {
-          alertEl.innerHTML = ''; shownLock = false; btnP.disabled = false;
-        }
-        return secs > 0;
-      };
-      clearInterval(timerId);
-      checkLock();
-      timerId = setInterval(checkLock, 1000);
-      const refreshConsent = () => {
-        const mode = consentModeFor();
-        if (mode !== S.consentMode) { $('#phConsentWrap').innerHTML = phoneConsent(); bindPhoneConsent(); }
-      };
-
       input.addEventListener('beforeinput', (e) => {
         if (e.inputType === 'insertText' && e.data && e.data.length === 1 && /[^\d\s]/.test(e.data)) {
           e.preventDefault(); flashHint('Numbers only, please.');
@@ -511,8 +447,6 @@
         if (S.number.length === S.country.len && !S.country.pattern.test(S.number)) {
           setFieldError(input, err, invalidPhoneText());
         }
-        refreshConsent();
-        checkLock();
       });
       input.addEventListener('blur', () => {
         if (S.number && S.number.length < S.country.min) setFieldError(input, err, lengthText());
@@ -524,10 +458,8 @@
         const flag = $('#ccFlag'); flag.style.visibility = '';
         flag.src = flagSrc(S.country.iso); flag.srcset = `${flagSrc(S.country.iso, 80)} 2x`;
         $('#ccIso').textContent = S.country.iso; $('#ccDial').textContent = `+${S.country.dial}`;
-        refreshConsent();
         input.value = groupDigits(S.number, S.country.group);
         setFieldError(input, err, '');
-        checkLock();
         input.focus();
       });
 
@@ -540,8 +472,6 @@
         if (!S.country.pattern.test(S.number)) return setFieldError(input, err, invalidPhoneText()), input.focus();
         const ce = consentError(S.consent);
         if (ce) { const ce2 = $('#ph-chErr'); ce2.className = 'msg msg--error'; ce2.innerHTML = ICON.alert + esc(ce); $('#ph-ch-email').focus(); return; }
-        shownLock = false;
-        if (checkLock()) return;
         S.key = keyOf(S.country, S.number);
         await startOtp({ kind: 'phone', dest: S.key, label: prettyPhone(S.country, S.number) }, btn, 'otp');
       });
@@ -553,57 +483,6 @@
     return c.min === c.len ? `Enter all ${c.len} digits of your mobile number.` : `Enter ${c.min} to ${c.len} digits of your mobile number.`;
   }
 
-  /* Consent on the first screen. The account is unknown until OTP, so the collapsed
-     state is only used when this device remembers the number being entered. */
-  function consentModeFor() {
-    const r = rememberedUser();
-    if (r && r.key === keyOf(S.country, S.number) && consentLevel(r.user.consent) !== 'none') return 'saved';
-    return 'open';
-  }
-  function phoneConsent() {
-    const mode = consentModeFor();
-    if (mode !== S.consentMode) {
-      S.consent = mode === 'saved' ? cloneConsent(rememberedUser().user.consent) : blankConsent();
-      S.consentTouched = false;
-      S.touchedKeys = [];
-    }
-    S.consentMode = mode;
-    if (mode === 'open') return consentFieldset('ph', S.consent);
-    return `
-      <section class="prefs prefs--inline" id="phPrefs" aria-labelledby="phPrefsTitle">
-        <div class="prefs__head">
-          <span class="prefs__icon">${ICON.bell}</span>
-          <div class="prefs__text">
-            <p class="prefs__title" id="phPrefsTitle">Communication preferences</p>
-            <p class="prefs__sum" id="phPrefsSum">${esc(consentSummary(S.consent))}</p>
-          </div>
-          <button type="button" class="prefs__toggle" id="phPrefsToggle" aria-expanded="false" aria-controls="phPrefsPanel">Edit ${ICON.chevron}</button>
-        </div>
-        <div class="prefs__panel" id="phPrefsPanel" hidden>${consentFieldset('ph', S.consent)}</div>
-      </section>`;
-  }
-  function bindPhoneConsent() {
-    const wrap = $('#phConsentWrap');
-    const touch = (keys) => keys.forEach((k) => { if (!S.touchedKeys.includes(k)) S.touchedKeys.push(k); });
-    $('#ph-consent', wrap).addEventListener('change', (e) => {
-      const t = e.target;
-      if (t.id === 'ph-mkt') touch(CHANNELS.map((c) => c.key));
-      else if (t.dataset.ch) touch([t.dataset.ch]);
-      else if (t.id === 'ph-prs') touch(['personalisation']);
-    });
-    bindConsent(wrap, 'ph', S.consent, () => {
-      S.consentTouched = true;
-      const sum = $('#phPrefsSum'); if (sum) sum.textContent = consentSummary(S.consent);
-    });
-    const t = $('#phPrefsToggle');
-    if (t) t.addEventListener('click', () => {
-      const open = t.getAttribute('aria-expanded') !== 'true';
-      t.setAttribute('aria-expanded', String(open));
-      t.innerHTML = `${open ? 'Hide' : 'Edit'} ${ICON.chevron}`;
-      $('#phPrefsPanel').hidden = !open;
-      if (open) $('#ph-mkt').focus();
-    });
-  }
 
   function invalidPhoneText() {
     return S.country.iso === 'IN'
@@ -765,15 +644,9 @@
     const kind = S.otp.kind;
     setBusy(btn, true, 'Signing you in…');
     if (kind === 'phone') {
-      let user = await api.findUser(S.key);
+      const user = await api.findUser(S.key);
       if (user) {
-        if (S.consentTouched) {
-          // Prefilled from this device's saved record: the user saw and edited their real choices, so save as shown.
-          // Blank form (new device, incognito, Remember me off): untouched boxes mean "not answered" and keep the
-          // saved value; a touched box is a decision (ticked = yes, ticked then unticked = no).
-          const next = S.consentMode === 'saved' ? S.consent : applyTouched(user.consent, S.consent, S.touchedKeys);
-          user = { ...user, consent: await api.saveConsent(S.key, normaliseConsent(next, 'login')) };
-        }
+        if (anySelected(S.consent)) await api.sendConsent(S.key, normaliseConsent(S.consent, 'login'));
         return signedIn(S.key, user, 'returning');
       }
       return go('details', { focus: '#title0' });
@@ -848,7 +721,6 @@
           ${errorMsg('emailErr', '')}
           <p class="suggest" id="emailSuggest" aria-live="polite"></p>
         </div>
-        ${consentFieldset('su', S.consent)}
       </form>`,
     foot: `<button class="btn btn--primary" type="submit" form="stepForm" id="primaryBtn">Create account</button>${legal()}`,
     focus: '#title0',
@@ -862,7 +734,6 @@
         $('.salute').classList.remove('is-invalid');
       }));
       bindEmail(email, $('#emailErr'), $('#emailSuggest'));
-      bindConsent($('#stepForm'), 'su', S.consent);
 
       $('#stepForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -884,11 +755,6 @@
         setFieldError(last, $('#lastErr'), le); if (le) errs.push(last);
         const ee = emailError(S.details.email);
         setFieldError(email, $('#emailErr'), ee); if (ee) errs.push(email);
-        const ce = consentError(S.consent);
-        const cErrEl = $('#su-chErr');
-        cErrEl.className = 'msg msg--error';
-        cErrEl.innerHTML = ce ? ICON.alert + esc(ce) : '';
-        if (ce) errs.push($('#su-ch-email'));
         if (errs.length) { errs[0].focus(); return; }
 
         const btn = $('#primaryBtn');
@@ -1013,59 +879,6 @@
     prs.addEventListener('change', () => { c.personalisation = prs.checked; onChange?.(); });
   }
 
-  /* Returning-user preferences: collapsed for all/partial, always expanded for none. */
-  function prefsCard(user, { forceOpen = false } = {}) {
-    const level = consentLevel(user.consent);
-    const open = forceOpen || level === 'none';
-    return `
-      <section class="prefs" id="prefs" data-level="${level}" aria-labelledby="prefsTitle">
-        <div class="prefs__head">
-          <span class="prefs__icon">${ICON.bell}</span>
-          <div class="prefs__text">
-            <p class="prefs__title" id="prefsTitle">${level === 'none' ? 'Hear from us your way' : 'Communication preferences'}</p>
-            <p class="prefs__sum" id="prefsSum">${level === 'none' ? 'Choose what you’d like to hear about. You can change this anytime.' : esc(consentSummary(user.consent))}</p>
-          </div>
-          ${level === 'none' && !forceOpen ? '' : `<button type="button" class="prefs__toggle" id="prefsToggle" aria-expanded="${open}" aria-controls="prefsPanel">${open ? 'Hide' : 'Edit'} ${ICON.chevron}</button>`}
-        </div>
-        <div class="prefs__panel" id="prefsPanel" ${open ? '' : 'hidden'}>
-          ${consentFieldset('pf', cloneConsent(user.consent), { title: 'Communication preferences' })}
-          <p class="save-state" id="saveState" aria-live="polite"></p>
-        </div>
-      </section>`;
-  }
-
-  function bindPrefs(key) {
-    const card = $('#prefs'); if (!card) return;
-    const toggle = $('#prefsToggle'); const panel = $('#prefsPanel');
-    const state = $('#saveState'); const sum = $('#prefsSum');
-    const c = cloneConsent(db.read().users[key].consent);
-    if (toggle) toggle.addEventListener('click', () => {
-      const open = toggle.getAttribute('aria-expanded') !== 'true';
-      toggle.setAttribute('aria-expanded', String(open));
-      toggle.innerHTML = `${open ? 'Hide' : 'Edit'} ${ICON.chevron}`;
-      panel.hidden = !open;
-      if (open) $('#pf-mkt').focus();
-    });
-    let t; let seq = 0;
-    const save = async () => {
-      if (consentError(c)) { state.className = 'save-state'; state.textContent = ''; return; }
-      const mine = ++seq;
-      state.className = 'save-state'; state.textContent = 'Saving…';
-      try {
-        const saved = await api.saveConsent(key, normaliseConsent(c, 'preferences'));
-        if (mine !== seq) return;
-        state.className = 'save-state is-ok'; state.innerHTML = `${ICON.tick} Saved`;
-        if (card.dataset.level !== 'none') sum.textContent = consentSummary(saved);
-      } catch {
-        if (mine !== seq) return;
-        state.className = 'save-state is-error';
-        state.innerHTML = `${ICON.alert} Couldn’t save. <button type="button" class="link-btn" id="retrySave">Try again</button>`;
-        $('#retrySave').addEventListener('click', save);
-      }
-    };
-    bindConsent(card, 'pf', c, () => { clearTimeout(t); t = setTimeout(save, 450); });
-  }
-
   /* ---------- Step: email swap ---------- */
   STEPS.swap = () => {
     const email = S.details.email; const masked = maskPhone(S.swap.ownerKey);
@@ -1110,13 +923,12 @@
 
   /* ---------- Step: success ---------- */
   STEPS.success = () => {
-    const { user, how, key } = S.result;
+    const { user, how } = S.result;
     const name = esc(user.first);
-    let title; let sub; let extra = '';
+    let title; let sub;
     if (how === 'returning') {
       title = `Welcome back, ${name}`;
       sub = 'You’re signed in.';
-      extra = prefsCard(user);
     } else if (how === 'swapped') {
       title = `You’re all set, ${name}`;
       sub = `Your account is ready and <strong>${esc(user.email)}</strong> is now linked to it.`;
@@ -1124,35 +936,14 @@
       title = `Welcome to Zoya, ${name}`;
       sub = 'Your account is ready.';
     }
-    if (how !== 'returning') {
-      extra = `<p class="consent__note">You can change your communication preferences anytime from your account menu.</p>`;
-    }
     return {
       body: `
         <h2 class="prompt" id="stepTitle">${title}</h2>
-        <p class="sub">${sub}</p>
-        ${extra}`,
+        <p class="sub">${sub}</p>`,
       foot: `
         <a class="btn btn--primary" href="${CONFIG.PLP_URL}">Continue shopping</a>
         <div class="foot-row"><button type="button" class="btn btn--text" id="stayBtn">Stay on this page</button></div>`,
-      bind() {
-        $('#stayBtn').addEventListener('click', closeDialog);
-        bindPrefs(key);
-      },
-    };
-  };
-
-  /* ---------- Step: preferences (from account menu) ---------- */
-  STEPS.prefs = () => {
-    const key = session.get();
-    const user = db.read().users[key];
-    return {
-      body: `
-        <h2 class="prompt" id="stepTitle">Communication preferences</h2>
-        <p class="sub">Changes save automatically.</p>
-        ${prefsCard(user, { forceOpen: true })}`,
-      foot: `<button type="button" class="btn btn--ghost" id="doneBtn">Done</button>`,
-      bind() { $('#doneBtn').addEventListener('click', closeDialog); bindPrefs(key); },
+      bind() { $('#stayBtn').addEventListener('click', closeDialog); },
     };
   };
 
@@ -1170,7 +961,6 @@
         <button class="account-btn" type="button" id="acctBtn" aria-haspopup="true" aria-expanded="false" aria-controls="acctMenu">${ICON.user} Hi, ${esc(user.first)}</button>
         <div class="account-menu" id="acctMenu" hidden>
           <p class="account-menu__who">${esc([user.title, user.first, user.last].filter(Boolean).join(' '))}<br>${esc(user.email || 'No email on file')}</p>
-          <button type="button" id="menuPrefs">Communication preferences</button>
           <button type="button" id="menuLogout">Log out</button>
         </div>`;
       const btn = $('#acctBtn'); const menu = $('#acctMenu');
@@ -1178,7 +968,6 @@
       btn.addEventListener('click', (e) => { e.stopPropagation(); setOpen(menu.hidden); if (!menu.hidden) $('button', menu).focus(); });
       menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setOpen(false); btn.focus(); } });
       document.addEventListener('click', (e) => { if (!menu.contains(e.target)) setOpen(false); });
-      $('#menuPrefs').addEventListener('click', () => { setOpen(false); openDialog('prefs'); });
       $('#menuLogout').addEventListener('click', () => { session.clear(); renderHeader(); $('[data-open-login]').focus(); });
     }
   }
@@ -1222,7 +1011,7 @@
 
   /* ---------- Screen switcher: jump straight to any pop-up state (developer handoff) ---------- */
   const IN = COUNTRIES[0];
-  const PV = { returningAll: '91-9876543210', returningSome: '91-9876543211', returningNone: '91-9876543212', fresh: '91-9123456780', owner: '91-9812343469', blocked: '91-9876543213' };
+  const PV = { returningAll: '91-9876543210', fresh: '91-9123456780', owner: '91-9812343469', blocked: '91-9876543213' };
   const numOf = (key) => key.split('-')[1];
   const seededUser = (key) => {
     const data = db.read(); data.users[key] = seed().users[key]; db.write(data);
@@ -1248,13 +1037,8 @@
       { id: 'phone-invalid', label: 'Mobile number: invalid number', step: 'phone',
         setup() { S.number = '5123456789'; S.phoneError = invalidPhoneText(); },
         after() { $('#phoneInput').setAttribute('aria-invalid', 'true'); } },
-      { id: 'phone-remembered', label: 'Remembered device: saved preferences', step: 'phone',
-        setup() { seededUser(PV.returningAll); device.set(PV.returningAll); S = freshFromDevice(); } },
-      { id: 'phone-remembered-edit', label: 'Remembered device: editing preferences', step: 'phone',
-        setup() { seededUser(PV.returningSome); device.set(PV.returningSome); S = freshFromDevice(); },
-        after() { $('#phPrefsToggle')?.click(); } },
-      { id: 'phone-blocked', label: 'Blocked number (24-hour lock)', step: 'phone',
-        setup() { locks.set(PV.blocked, Date.now() + CONFIG.LOCK_S * 1000); S.number = numOf(PV.blocked); } },
+      { id: 'phone-remembered', label: 'Remember me: number pre-filled', step: 'phone',
+        setup() { device.set(PV.returningAll); S = freshFromDevice(); } },
       { id: 'phone-network', label: 'Network error', step: 'phone',
         setup() { S.number = numOf(PV.returningAll); }, after() { showFormAlert(NET_ERR); } },
     ] },
@@ -1298,14 +1082,8 @@
         setup() { S.result = { key: PV.fresh, how: 'new', user: newProfile() }; } },
       { id: 'success-swapped', label: 'Account created, email moved', step: 'success',
         setup() { S.result = { key: PV.fresh, how: 'swapped', user: swapProfile() }; } },
-      { id: 'success-all', label: 'Welcome back: all preferences on', step: 'success',
+      { id: 'success-returning', label: 'Welcome back (existing customer)', step: 'success',
         setup() { S.result = { key: PV.returningAll, how: 'returning', user: seededUser(PV.returningAll) }; } },
-      { id: 'success-some', label: 'Welcome back: some preferences on', step: 'success',
-        setup() { S.result = { key: PV.returningSome, how: 'returning', user: seededUser(PV.returningSome) }; } },
-      { id: 'success-none', label: 'Welcome back: no preferences yet', step: 'success',
-        setup() { S.result = { key: PV.returningNone, how: 'returning', user: seededUser(PV.returningNone) }; } },
-      { id: 'prefs', label: 'Communication preferences (account menu)', step: 'prefs',
-        setup() { seededUser(PV.returningSome); session.set(PV.returningSome); renderHeader(); } },
     ] },
   ];
   const SCREEN_LIST = SCREENS.flatMap((g) => g.items);
